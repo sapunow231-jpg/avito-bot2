@@ -1,15 +1,17 @@
 import os
 from dotenv import load_dotenv
-import feedparser
+import requests
+from bs4 import BeautifulSoup
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 import asyncio
 
-load_dotenv()  # Загружает .env
+# Загружаем .env для локального запуска
+load_dotenv()
 
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
-CHECK_INTERVAL = 5  # интервал проверки в минутах
+CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", 2))
 DEFAULT_CITY = os.getenv("DEFAULT_CITY", "samara")
 DEFAULT_QUERY = os.getenv("DEFAULT_QUERY", "iphone")
 
@@ -20,42 +22,54 @@ sent_ads = set()
 search_city = DEFAULT_CITY
 search_query = DEFAULT_QUERY
 
-# --- RSS парсинг ---
-def build_rss_url(city: str, query: str) -> str:
+def build_search_url(city: str, query: str) -> str:
     query_encoded = "+".join(query.strip().split())
-    return f"https://www.avito.ru/{city}/telefony/{query_encoded}/rss"
+    return f"https://www.avito.ru/{city}/telefony?p=1&q={query_encoded}"
 
 def get_avito_ads() -> list:
-    url = build_rss_url(search_city, search_query)
+    url = build_search_url(search_city, search_query)
+    headers = {"User-Agent": "Mozilla/5.0"}
     try:
-        feed = feedparser.parse(url)
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
     except Exception as e:
-        print(f"Ошибка при запросе RSS: {e}")
+        print(f"Ошибка при запросе: {e}")
         return []
-
+    soup = BeautifulSoup(response.text, "html.parser")
     ads = []
-    for entry in feed.entries:
-        ad_id = entry.link.split("/")[-1]
-        text = f"{entry.title}\n{entry.link}"
-        ads.append({"id": ad_id, "text": text})
+    for item in soup.select("div[data-marker='item']"):
+        title_tag = item.select_one("h3")
+        price_tag = item.select_one("span[data-marker='item-price']")
+        link_tag = item.select_one("a[href]")
+        if not title_tag or not price_tag or not link_tag:
+            continue
+        title = title_tag.text.strip()
+        price = price_tag.text.strip()
+        link = "https://www.avito.ru" + link_tag["href"]
+        ad_id = link.split("/")[-1]
+        ads.append({"id": ad_id, "text": f"{title}\n{price}\n{link}"})
     return ads
 
-# --- Отправка новых объявлений ---
-async def send_new_ads(application):
+async def send_new_ads(app):
     global sent_ads
     ads = get_avito_ads()
     new_count = 0
     for ad in ads:
         if ad["id"] not in sent_ads:
             try:
-                await application.bot.send_message(chat_id=CHAT_ID, text=ad["text"])
+                await app.bot.send_message(chat_id=CHAT_ID, text=ad["text"])
                 sent_ads.add(ad["id"])
                 new_count += 1
             except Exception as e:
                 print(f"Ошибка при отправке: {e}")
     print(f"Отправлено новых объявлений: {new_count}")
 
-# --- Хэндлеры команд ---
+async def scheduled_task(app):
+    while True:
+        await send_new_ads(app)
+        await asyncio.sleep(CHECK_INTERVAL * 60)
+
+# Команды бота
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"Бот запущен! Проверка каждые {CHECK_INTERVAL} минуты(ы).\n"
@@ -82,27 +96,18 @@ async def set_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("Укажите запрос после команды. Пример: /query ноутбук")
 
-# --- Основная функция ---
-def main():
+# Основная функция
+async def main():
     app = ApplicationBuilder().token(TOKEN).build()
-
-    # Регистрируем команды
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("city", set_city))
     app.add_handler(CommandHandler("query", set_query))
 
-    # Фоновая проверка новых объявлений после старта
-    async def on_startup(application):
-        async def periodic_check():
-            while True:
-                await send_new_ads(application)
-                await asyncio.sleep(CHECK_INTERVAL * 60)
-        application.create_task(periodic_check())
-
-    app.post_init(on_startup)
+    # Запуск фоновой задачи проверки объявлений
+    asyncio.create_task(scheduled_task(app))
 
     print("Бот запущен и готов к работе!")
-    app.run_polling()  # безопасно запускает цикл событий
+    await app.run_polling()
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
