@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-# === Загружаем переменные окружения ===
+# === Загрузка переменных окружения ===
 load_dotenv()
 
 TOKEN = os.getenv("TOKEN")
@@ -16,7 +16,7 @@ DEFAULT_CITY = os.getenv("DEFAULT_CITY", "samara")
 DEFAULT_QUERY = os.getenv("DEFAULT_QUERY", "iphone")
 
 if not TOKEN or not CHAT_ID:
-    raise ValueError("❌ Ошибка: переменные TOKEN и CHAT_ID должны быть заданы в .env или через Render Environment.")
+    raise ValueError("❌ Переменные TOKEN и CHAT_ID должны быть заданы в .env или Render Environment.")
 
 sent_ads = set()
 search_city = DEFAULT_CITY
@@ -41,7 +41,6 @@ def get_avito_ads() -> list:
 
     soup = BeautifulSoup(response.text, "html.parser")
     ads = []
-
     for item in soup.select("div[data-marker='item']"):
         title_tag = item.select_one("h3")
         price_tag = item.select_one("span[data-marker='item-price']")
@@ -57,7 +56,7 @@ def get_avito_ads() -> list:
     return ads
 
 
-# === Отправка новых объявлений ===
+# === Отправка объявлений ===
 async def send_new_ads(app):
     global sent_ads
     ads = get_avito_ads()
@@ -121,30 +120,25 @@ async def main():
     app.add_handler(CommandHandler("city", set_city))
     app.add_handler(CommandHandler("query", set_query))
 
+    # Запускаем задачу с периодической проверкой объявлений
     asyncio.create_task(scheduled_task(app))
     print("✅ Бот запущен и работает.")
-    await app.run_polling()
+
+    # run_polling не будет закрывать цикл вручную
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()
+    await asyncio.Event().wait()  # держим цикл живым бесконечно
 
 
-# === Безопасный запуск (Render, Python 3.12, Jupyter) ===
+# === Универсальный запуск (Render + Python 3.13) ===
 if __name__ == "__main__":
     try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-    try:
-        if loop.is_running():
-            print("[INFO] Цикл уже запущен — создаём задачу вручную.")
-            loop.create_task(main())
-            loop.run_forever()
-        else:
-            print("[INFO] Запускаем новый event loop.")
-            loop.run_until_complete(main())
+        asyncio.run(main())
     except RuntimeError as e:
-        if "running event loop" in str(e).lower():
-            print("[INFO] Активный цикл обнаружен — создаём задачу.")
+        if "close a running event loop" in str(e).lower():
+            print("[INFO] Активный event loop найден, используем существующий.")
+            loop = asyncio.get_event_loop()
             loop.create_task(main())
             loop.run_forever()
         else:
