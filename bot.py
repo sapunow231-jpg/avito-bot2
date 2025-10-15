@@ -1,18 +1,12 @@
 import os
 from dotenv import load_dotenv
-load_dotenv()
-print(os.getenv("TOKEN"))
-
-import os
-from dotenv import load_dotenv
 import requests
 from bs4 import BeautifulSoup
-from telegram import Bot, Update
-from telegram.ext import Updater, CommandHandler, CallbackContext
-import schedule
-import time
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+import asyncio
 
-load_dotenv()
+load_dotenv()  # Загружает .env
 
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
@@ -20,7 +14,9 @@ CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", 2))
 DEFAULT_CITY = os.getenv("DEFAULT_CITY", "samara")
 DEFAULT_QUERY = os.getenv("DEFAULT_QUERY", "iphone")
 
-bot = Bot(TOKEN)
+if not TOKEN or not CHAT_ID:
+    raise ValueError("TOKEN и CHAT_ID должны быть установлены через .env или Environment Variables")
+
 sent_ads = set()
 search_city = DEFAULT_CITY
 search_query = DEFAULT_QUERY
@@ -53,56 +49,67 @@ def get_avito_ads() -> list:
         ads.append({"id": ad_id, "text": f"{title}\n{price}\n{link}"})
     return ads
 
-def send_new_ads():
+async def send_new_ads(application):
+    global sent_ads
     ads = get_avito_ads()
     new_count = 0
     for ad in ads:
         if ad["id"] not in sent_ads:
             try:
-                bot.send_message(chat_id=CHAT_ID, text=ad["text"])
+                await application.bot.send_message(chat_id=CHAT_ID, text=ad["text"])
                 sent_ads.add(ad["id"])
                 new_count += 1
             except Exception as e:
                 print(f"Ошибка при отправке: {e}")
     print(f"Отправлено новых объявлений: {new_count}")
 
-def start(update: Update, context: CallbackContext):
-    update.message.reply_text(
+# --- Хэндлеры команд ---
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
         f"Бот запущен! Проверка каждые {CHECK_INTERVAL} минуты(ы).\n"
         "Используйте команды:\n"
         "/city <город> — изменить город\n"
         "/query <запрос> — изменить поисковый запрос"
     )
 
-def set_city(update: Update, context: CallbackContext):
+async def set_city(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global search_city, sent_ads
     if context.args:
         search_city = context.args[0].lower()
         sent_ads.clear()
-        update.message.reply_text(f"Город поиска изменен на: {search_city}")
+        await update.message.reply_text(f"Город поиска изменен на: {search_city}")
     else:
-        update.message.reply_text("Укажите город после команды. Пример: /city kazan")
+        await update.message.reply_text("Укажите город после команды. Пример: /city kazan")
 
-def set_query(update: Update, context: CallbackContext):
+async def set_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global search_query, sent_ads
     if context.args:
         search_query = " ".join(context.args).lower()
         sent_ads.clear()
-        update.message.reply_text(f"Поисковый запрос изменен на: {search_query}")
+        await update.message.reply_text(f"Поисковый запрос изменен на: {search_query}")
     else:
-        update.message.reply_text("Укажите запрос после команды. Пример: /query ноутбук")
+        await update.message.reply_text("Укажите запрос после команды. Пример: /query ноутбук")
 
-updater = Updater(TOKEN)
-dp = updater.dispatcher
-dp.add_handler(CommandHandler("start", start))
-dp.add_handler(CommandHandler("city", set_city))
-dp.add_handler(CommandHandler("query", set_query))
+# --- Основная часть ---
+async def main():
+    app = ApplicationBuilder().token(TOKEN).build()
 
-schedule.every(CHECK_INTERVAL).minutes.do(send_new_ads)
+    # Регистрируем команды
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("city", set_city))
+    app.add_handler(CommandHandler("query", set_query))
 
-updater.start_polling()
-print("Бот запущен!")
+    # Фоновая проверка новых объявлений
+    async def periodic_check():
+        while True:
+            await send_new_ads(app)
+            await asyncio.sleep(CHECK_INTERVAL * 60)
 
-while True:
-    schedule.run_pending()
-    time.sleep(1)
+    # Запуск фоновой задачи
+    app.create_task(periodic_check())
+
+    print("Бот запущен и готов к работе!")
+    await app.run_polling()
+
+if __name__ == "__main__":
+    asyncio.run(main())
