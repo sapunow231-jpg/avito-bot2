@@ -23,7 +23,7 @@ search_city = DEFAULT_CITY
 search_query = DEFAULT_QUERY
 
 
-# === Парсер Avito ===
+# === Вспомогательные функции ===
 def build_search_url(city: str, query: str) -> str:
     query_encoded = "+".join(query.strip().split())
     return f"https://www.avito.ru/{city}/telefony?p=1&q={query_encoded}"
@@ -41,7 +41,6 @@ def get_avito_ads() -> list:
 
     soup = BeautifulSoup(response.text, "html.parser")
     ads = []
-
     for item in soup.select("div[data-marker='item']"):
         title_tag = item.select_one("h3")
         price_tag = item.select_one("span[data-marker='item-price']")
@@ -126,13 +125,21 @@ async def main():
     await app.run_polling()
 
 
-# === Безопасный запуск под Render / Python 3.12 ===
+# === Безопасный запуск для Render / Python 3.12 / Windows ===
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        # Если цикл уже есть и запущен (Render / Jupyter) — используем его
+        loop = asyncio.get_event_loop()
     except RuntimeError:
-        # Всегда создаём новый цикл, если его нет
-        print("[INFO] Создаём новый event loop вручную.")
+        # Если цикла нет, создаём новый
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
+
+    # Проверяем, запущен ли цикл
+    if loop.is_running():
+        print("[INFO] Используется уже активный event loop.")
+        loop.create_task(main())
+    else:
+        print("[INFO] Запускаем новый event loop.")
         loop.run_until_complete(main())
+
