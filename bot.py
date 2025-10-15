@@ -4,7 +4,7 @@ import requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, ContextTypes
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 # === Загрузка переменных окружения ===
 load_dotenv()
@@ -14,13 +14,15 @@ CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", 2))
 DEFAULT_CITY = os.getenv("DEFAULT_CITY", "samara")
 DEFAULT_QUERY = os.getenv("DEFAULT_QUERY", "iphone")
 PORT = int(os.environ.get("PORT", 10000))  # Render назначает порт
+RENDER_DOMAIN = os.environ.get("RENDER_EXTERNAL_URL")  # Должен быть HTTPS URL от Render
 
-if not TOKEN:
-    raise ValueError("❌ TOKEN обязателен.")
+if not TOKEN or not RENDER_DOMAIN:
+    raise ValueError("❌ Обязательно задать TOKEN и RENDER_EXTERNAL_URL")
 
 sent_ads = set()
 search_city = DEFAULT_CITY
 search_query = DEFAULT_QUERY
+WEBHOOK_PATH = "webhook"  # Путь для Telegram webhook
 
 # === Парсер Avito ===
 def build_search_url(city: str, query: str) -> str:
@@ -37,7 +39,6 @@ def get_avito_ads() -> list:
         print(f"[Ошибка запроса] {e}")
         return []
 
-    from bs4 import BeautifulSoup
     soup = BeautifulSoup(response.text, "html.parser")
     ads = []
     for item in soup.select("div[data-marker='item']"):
@@ -78,7 +79,7 @@ async def set_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("❗ Пример: /query ноутбук")
 
-# === Отправка объявлений через webhook ===
+# === Отправка объявлений ===
 async def send_new_ads(app):
     global sent_ads
     ads = get_avito_ads()
@@ -99,26 +100,26 @@ async def scheduled_task(app):
         await send_new_ads(app)
         await asyncio.sleep(CHECK_INTERVAL * 60)
 
-# === Основная функция ===
+# === Main ===
 async def main():
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("city", set_city))
     app.add_handler(CommandHandler("query", set_query))
 
-    # Запуск фоновой проверки объявлений
+    # Фоновая проверка объявлений
     asyncio.create_task(scheduled_task(app))
 
-    # Webhook
-    webhook_url = f"https://{os.environ.get('RENDER_EXTERNAL_URL')}/{TOKEN}"
+    # Настройка webhook
+    webhook_url = f"https://{RENDER_DOMAIN}/{WEBHOOK_PATH}"
     print(f"[INFO] Настраиваем webhook: {webhook_url}")
     await app.bot.set_webhook(url=webhook_url)
 
-    # Запуск веб-сервера
+    # Запуск webhook сервера
     await app.run_webhook(
         listen="0.0.0.0",
         port=PORT,
-        url_path=TOKEN,
+        url_path=WEBHOOK_PATH,
         webhook_url=webhook_url
     )
 
