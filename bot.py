@@ -20,7 +20,7 @@ DEFAULT_QUERY = os.getenv("DEFAULT_QUERY", "iphone")
 PORT = int(os.environ.get("PORT", 10000))  # Render назначает порт
 
 if not TOKEN or not CHAT_ID:
-    raise ValueError("❌ Переменные TOKEN и CHAT_ID должны быть заданы в .env или Render Environment.")
+    raise ValueError("❌ TOKEN и CHAT_ID обязательны.")
 
 sent_ads = set()
 search_city = DEFAULT_CITY
@@ -34,7 +34,6 @@ def run_webserver():
     httpd.serve_forever()
 
 threading.Thread(target=run_webserver, daemon=True).start()
-
 
 # === Парсер Avito ===
 def build_search_url(city: str, query: str) -> str:
@@ -59,14 +58,12 @@ def get_avito_ads() -> list:
         link_tag = item.select_one("a[href]")
         if not title_tag or not price_tag or not link_tag:
             continue
-
         title = title_tag.text.strip()
         price = price_tag.text.strip()
         link = "https://www.avito.ru" + link_tag["href"]
         ad_id = link.split("/")[-1]
         ads.append({"id": ad_id, "text": f"{title}\n{price}\n{link}"})
     return ads
-
 
 # === Отправка новых объявлений ===
 async def send_new_ads(app):
@@ -82,25 +79,20 @@ async def send_new_ads(app):
             print(f"[Ошибка отправки] {e}")
 
     if new_ads:
-        print(f"[INFO] Отправлено новых объявлений: {len(new_ads)}")
+        print(f"[INFO] Новых объявлений: {len(new_ads)}")
     else:
-        print("[INFO] Новых объявлений нет.")
-
+        print("[INFO] Нет новых объявлений.")
 
 async def scheduled_task(app):
     while True:
         await send_new_ads(app)
         await asyncio.sleep(CHECK_INTERVAL * 60)
 
-
 # === Команды Telegram ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        f"🤖 Бот запущен!\n"
-        f"Проверка каждые {CHECK_INTERVAL} мин.\n\n"
-        f"Команды:\n"
-        f"/city <город> — сменить город\n"
-        f"/query <запрос> — сменить поисковый запрос"
+        f"🤖 Бот запущен!\nПроверка каждые {CHECK_INTERVAL} мин.\n"
+        f"Команды:\n/city <город>\n/query <запрос>"
     )
 
 async def set_city(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -108,7 +100,7 @@ async def set_city(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.args:
         search_city = context.args[0].lower()
         sent_ads.clear()
-        await update.message.reply_text(f"🏙 Город изменён на: {search_city}")
+        await update.message.reply_text(f"🏙 Город: {search_city}")
     else:
         await update.message.reply_text("❗ Пример: /city kazan")
 
@@ -117,38 +109,32 @@ async def set_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.args:
         search_query = " ".join(context.args).lower()
         sent_ads.clear()
-        await update.message.reply_text(f"🔍 Поисковый запрос изменён на: {search_query}")
+        await update.message.reply_text(f"🔍 Запрос: {search_query}")
     else:
         await update.message.reply_text("❗ Пример: /query ноутбук")
 
-
-# === Safe polling: защита от Conflict ===
+# === Safe polling ===
 async def safe_polling(app):
     while True:
         try:
             print("✅ Запуск бота...")
             await app.run_polling()
         except Conflict:
-            print("⚠️ Конфликт: бот уже запущен. Ждём 30 сек и пробуем снова...")
+            print("⚠️ Конфликт. Ждём 30 сек...")
             await asyncio.sleep(30)
         except Exception as e:
             print(f"❌ Ошибка: {e}. Перезапуск через 15 сек...")
             await asyncio.sleep(15)
 
-
-# === Основная функция запуска ===
+# === Main ===
 async def main():
     app = ApplicationBuilder().token(TOKEN).build()
-
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("city", set_city))
     app.add_handler(CommandHandler("query", set_query))
-
     asyncio.create_task(scheduled_task(app))
     await safe_polling(app)
 
-
-# === Универсальный запуск ===
 if __name__ == "__main__":
     try:
         asyncio.run(main())
@@ -159,4 +145,5 @@ if __name__ == "__main__":
             loop.run_forever()
         else:
             raise
+
 
