@@ -1,6 +1,8 @@
 import os
 import asyncio
+import threading
 import requests
+from http.server import HTTPServer, SimpleHTTPRequestHandler
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from telegram import Update
@@ -15,6 +17,7 @@ CHAT_ID = os.getenv("CHAT_ID")
 CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", 2))
 DEFAULT_CITY = os.getenv("DEFAULT_CITY", "samara")
 DEFAULT_QUERY = os.getenv("DEFAULT_QUERY", "iphone")
+PORT = int(os.environ.get("PORT", 10000))
 
 if not TOKEN or not CHAT_ID:
     raise ValueError("❌ Переменные TOKEN и CHAT_ID должны быть заданы в .env или Render Environment.")
@@ -22,6 +25,15 @@ if not TOKEN or not CHAT_ID:
 sent_ads = set()
 search_city = DEFAULT_CITY
 search_query = DEFAULT_QUERY
+
+# === Мини HTTP-сервер для Render Web Service ===
+def run_webserver():
+    server_address = ('0.0.0.0', PORT)
+    httpd = HTTPServer(server_address, SimpleHTTPRequestHandler)
+    print(f"[INFO] HTTP-сервер запущен на порту {PORT}")
+    httpd.serve_forever()
+
+threading.Thread(target=run_webserver, daemon=True).start()
 
 
 # === Парсер Avito ===
@@ -135,10 +147,7 @@ async def main():
     app.add_handler(CommandHandler("city", set_city))
     app.add_handler(CommandHandler("query", set_query))
 
-    # Запускаем задачу проверки объявлений
     asyncio.create_task(scheduled_task(app))
-
-    # Безопасный polling с авто-восстановлением
     await safe_polling(app)
 
 
@@ -154,4 +163,5 @@ if __name__ == "__main__":
             loop.run_forever()
         else:
             raise
+
 
