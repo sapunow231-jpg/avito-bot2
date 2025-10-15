@@ -6,8 +6,8 @@ from telegram.ext import Updater, CommandHandler, CallbackContext
 import schedule
 import time
 
-TOKEN = os.getenv("TOKEN")
-CHAT_ID = os.getenv("CHAT_ID")
+TOKEN = os.getenv("8385878027:AAEz6A6koSZ3mwvZkvt4xMGvCkIfdvR7FWA")
+CHAT_ID = os.getenv("1285934259")
 CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", 2))
 DEFAULT_CITY = os.getenv("DEFAULT_CITY", "samara")
 DEFAULT_QUERY = os.getenv("DEFAULT_QUERY", "iphone")
