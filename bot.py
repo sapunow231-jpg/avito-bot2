@@ -16,21 +16,20 @@ DEFAULT_CITY = os.getenv("DEFAULT_CITY", "samara")
 DEFAULT_QUERY = os.getenv("DEFAULT_QUERY", "iphone")
 
 if not TOKEN or not CHAT_ID:
-    raise ValueError("Ошибка: TOKEN и CHAT_ID должны быть заданы в .env или через Render Environment.")
+    raise ValueError("❌ Ошибка: переменные TOKEN и CHAT_ID должны быть заданы в .env или через Render Environment.")
 
 sent_ads = set()
 search_city = DEFAULT_CITY
 search_query = DEFAULT_QUERY
 
 
-# === Вспомогательные функции ===
+# === Парсер Avito ===
 def build_search_url(city: str, query: str) -> str:
     query_encoded = "+".join(query.strip().split())
     return f"https://www.avito.ru/{city}/telefony?p=1&q={query_encoded}"
 
 
 def get_avito_ads() -> list:
-    """Парсит объявления с Avito."""
     url = build_search_url(search_city, search_query)
     headers = {"User-Agent": "Mozilla/5.0"}
     try:
@@ -42,6 +41,7 @@ def get_avito_ads() -> list:
 
     soup = BeautifulSoup(response.text, "html.parser")
     ads = []
+
     for item in soup.select("div[data-marker='item']"):
         title_tag = item.select_one("h3")
         price_tag = item.select_one("span[data-marker='item-price']")
@@ -57,8 +57,8 @@ def get_avito_ads() -> list:
     return ads
 
 
+# === Отправка объявлений ===
 async def send_new_ads(app):
-    """Отправляет новые объявления в Telegram."""
     global sent_ads
     ads = get_avito_ads()
     new_ads = [ad for ad in ads if ad["id"] not in sent_ads]
@@ -77,20 +77,19 @@ async def send_new_ads(app):
 
 
 async def scheduled_task(app):
-    """Периодическая проверка Avito."""
     while True:
         await send_new_ads(app)
         await asyncio.sleep(CHECK_INTERVAL * 60)
 
 
-# === Telegram-команды ===
+# === Команды Telegram ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"🤖 Бот запущен!\n"
-        f"Проверка каждые {CHECK_INTERVAL} мин.\n"
+        f"Проверка каждые {CHECK_INTERVAL} мин.\n\n"
         f"Команды:\n"
         f"/city <город> — сменить город\n"
-        f"/query <поиск> — сменить запрос"
+        f"/query <запрос> — сменить поисковый запрос"
     )
 
 
@@ -114,7 +113,7 @@ async def set_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❗ Пример: /query ноутбук")
 
 
-# === Основная функция ===
+# === Основная логика ===
 async def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
@@ -127,17 +126,13 @@ async def main():
     await app.run_polling()
 
 
-# === Безопасный запуск под Render / Windows / Python 3.12 ===
+# === Безопасный запуск под Render / Python 3.12 ===
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except RuntimeError:
-        # Если цикл уже существует — используем его
-        loop = asyncio.get_event_loop_policy().get_event_loop()
-        if loop.is_running():
-            print("[INFO] Используется уже запущенный event loop.")
-            loop.create_task(main())
-        else:
-            print("[INFO] Создаём новый event loop.")
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(main())
+        # Всегда создаём новый цикл, если его нет
+        print("[INFO] Создаём новый event loop вручную.")
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(main())
