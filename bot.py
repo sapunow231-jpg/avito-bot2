@@ -1,10 +1,12 @@
 import os
 import asyncio
+import time
 import requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram.error import Conflict
 
 # === Загрузка переменных окружения ===
 load_dotenv()
@@ -56,7 +58,7 @@ def get_avito_ads() -> list:
     return ads
 
 
-# === Отправка объявлений ===
+# === Отправка новых объявлений ===
 async def send_new_ads(app):
     global sent_ads
     ads = get_avito_ads()
@@ -112,34 +114,40 @@ async def set_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❗ Пример: /query ноутбук")
 
 
-# === Основная логика ===
-async def main():
+# === Безопасный запуск бота с авто-восстановлением ===
+async def run_bot():
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("city", set_city))
     app.add_handler(CommandHandler("query", set_query))
 
-    # Запускаем задачу с периодической проверкой объявлений
     asyncio.create_task(scheduled_task(app))
-    print("✅ Бот запущен и работает.")
 
-    # run_polling не будет закрывать цикл вручную
-    await app.initialize()
-    await app.start()
-    await app.updater.start_polling()
-    await asyncio.Event().wait()  # держим цикл живым бесконечно
+    while True:
+        try:
+            print("✅ Бот запущен и работает.")
+            await app.initialize()
+            await app.start()
+            await app.updater.start_polling()
+            await asyncio.Event().wait()
+        except Conflict:
+            print("[⚠️] Конфликт: бот уже запущен где-то ещё. Ожидаем 30 сек и пробуем снова...")
+            await asyncio.sleep(30)
+        except Exception as e:
+            print(f"[❌ Ошибка] {e}. Перезапуск через 15 сек...")
+            await asyncio.sleep(15)
 
 
-# === Универсальный запуск (Render + Python 3.13) ===
+# === Универсальный запуск для Render / Python 3.13 ===
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        asyncio.run(run_bot())
     except RuntimeError as e:
         if "close a running event loop" in str(e).lower():
-            print("[INFO] Активный event loop найден, используем существующий.")
+            print("[INFO] Активный event loop найден — используем его повторно.")
             loop = asyncio.get_event_loop()
-            loop.create_task(main())
+            loop.create_task(run_bot())
             loop.run_forever()
         else:
             raise
