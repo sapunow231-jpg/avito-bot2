@@ -91,13 +91,15 @@ def main():
     app.add_handler(CommandHandler("city", set_city))
     app.add_handler(CommandHandler("query", set_query))
 
-    # Фоновая проверка новых объявлений
-    async def periodic_check():
-        while True:
-            await send_new_ads(app)
-            await asyncio.sleep(CHECK_INTERVAL * 60)
+    # Фоновая проверка новых объявлений после старта
+    async def on_startup(application):
+        async def periodic_check():
+            while True:
+                await send_new_ads(application)
+                await asyncio.sleep(CHECK_INTERVAL * 60)
+        application.create_task(periodic_check())
 
-    app.create_task(periodic_check())
+    app.post_init(on_startup)
 
     print("Бот запущен и готов к работе!")
     app.run_polling()  # безопасно запускает цикл событий
