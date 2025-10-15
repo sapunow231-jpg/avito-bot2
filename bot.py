@@ -110,7 +110,10 @@ async def main():
     # Фоновая проверка объявлений
     asyncio.create_task(scheduled_task(app))
 
-    # Настройка webhook
+    # Удаляем старый webhook, если был
+    await app.bot.delete_webhook()
+
+    # Настройка нового webhook
     webhook_url = f"https://{DOMAIN}/{WEBHOOK_PATH}"
     print(f"[INFO] Настраиваем webhook: {webhook_url}")
     await app.bot.set_webhook(url=webhook_url)
@@ -125,5 +128,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
 
