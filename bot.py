@@ -13,16 +13,16 @@ TOKEN = os.getenv("TOKEN")
 CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", 2))
 DEFAULT_CITY = os.getenv("DEFAULT_CITY", "samara")
 DEFAULT_QUERY = os.getenv("DEFAULT_QUERY", "iphone")
-PORT = int(os.environ.get("PORT", 10000))  # Render назначает порт
-RENDER_DOMAIN = os.environ.get("RENDER_EXTERNAL_URL")  # Должен быть HTTPS URL от Render
+PORT = int(os.environ.get("PORT", 10000))
+DOMAIN = os.environ.get("RENDER_EXTERNAL_URL")  # Должен быть HTTPS
 
-if not TOKEN or not RENDER_DOMAIN:
+if not TOKEN or not DOMAIN:
     raise ValueError("❌ Обязательно задать TOKEN и RENDER_EXTERNAL_URL")
 
 sent_ads = set()
 search_city = DEFAULT_CITY
 search_query = DEFAULT_QUERY
-WEBHOOK_PATH = "webhook"  # Путь для Telegram webhook
+WEBHOOK_PATH = "webhook"  # короткий путь для Telegram
 
 # === Парсер Avito ===
 def build_search_url(city: str, query: str) -> str:
@@ -54,7 +54,7 @@ def get_avito_ads() -> list:
         ads.append({"id": ad_id, "text": f"{title}\n{price}\n{link}"})
     return ads
 
-# === Telegram команды ===
+# === Команды Telegram ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"🤖 Бот запущен!\nПроверка каждые {CHECK_INTERVAL} мин.\n"
@@ -111,7 +111,7 @@ async def main():
     asyncio.create_task(scheduled_task(app))
 
     # Настройка webhook
-    webhook_url = f"https://{RENDER_DOMAIN}/{WEBHOOK_PATH}"
+    webhook_url = f"https://{DOMAIN}/{WEBHOOK_PATH}"
     print(f"[INFO] Настраиваем webhook: {webhook_url}")
     await app.bot.set_webhook(url=webhook_url)
 
