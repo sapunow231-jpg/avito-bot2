@@ -1,7 +1,6 @@
 import os
 from dotenv import load_dotenv
-import requests
-from bs4 import BeautifulSoup
+import feedparser
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 import asyncio
@@ -10,7 +9,7 @@ load_dotenv()  # Загружает .env
 
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
-CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", 2))
+CHECK_INTERVAL = 5  # Интервал проверки в минутах
 DEFAULT_CITY = os.getenv("DEFAULT_CITY", "samara")
 DEFAULT_QUERY = os.getenv("DEFAULT_QUERY", "iphone")
 
@@ -21,32 +20,23 @@ sent_ads = set()
 search_city = DEFAULT_CITY
 search_query = DEFAULT_QUERY
 
-def build_search_url(city: str, query: str) -> str:
+def build_rss_url(city: str, query: str) -> str:
     query_encoded = "+".join(query.strip().split())
-    return f"https://www.avito.ru/{city}/telefony?p=1&q={query_encoded}"
+    return f"https://www.avito.ru/{city}/telefony/{query_encoded}/rss"
 
 def get_avito_ads() -> list:
-    url = build_search_url(search_city, search_query)
-    headers = {"User-Agent": "Mozilla/5.0"}
+    url = build_rss_url(search_city, search_query)
     try:
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
+        feed = feedparser.parse(url)
     except Exception as e:
-        print(f"Ошибка при запросе: {e}")
+        print(f"Ошибка при запросе RSS: {e}")
         return []
-    soup = BeautifulSoup(response.text, "html.parser")
+
     ads = []
-    for item in soup.select("div[data-marker='item']"):
-        title_tag = item.select_one("h3")
-        price_tag = item.select_one("span[data-marker='item-price']")
-        link_tag = item.select_one("a[href]")
-        if not title_tag or not price_tag or not link_tag:
-            continue
-        title = title_tag.text.strip()
-        price = price_tag.text.strip()
-        link = "https://www.avito.ru" + link_tag["href"]
-        ad_id = link.split("/")[-1]
-        ads.append({"id": ad_id, "text": f"{title}\n{price}\n{link}"})
+    for entry in feed.entries:
+        ad_id = entry.link.split("/")[-1]
+        text = f"{entry.title}\n{entry.link}"
+        ads.append({"id": ad_id, "text": text})
     return ads
 
 async def send_new_ads(application):
@@ -103,7 +93,7 @@ async def main():
     async def periodic_check():
         while True:
             await send_new_ads(app)
-            await asyncio.sleep(CHECK_INTERVAL * 60)
+            await asyncio.sleep(CHECK_INTERVAL * 60)  # 5 минут
 
     # Запуск фоновой задачи
     app.create_task(periodic_check())
