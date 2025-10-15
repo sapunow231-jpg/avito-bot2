@@ -1,39 +1,26 @@
 import os
 import asyncio
-import threading
 import requests
-from http.server import HTTPServer, SimpleHTTPRequestHandler
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-from telegram.error import Conflict
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, ContextTypes
 
 # === Загрузка переменных окружения ===
 load_dotenv()
 
 TOKEN = os.getenv("TOKEN")
-CHAT_ID = os.getenv("CHAT_ID")
 CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", 2))
 DEFAULT_CITY = os.getenv("DEFAULT_CITY", "samara")
 DEFAULT_QUERY = os.getenv("DEFAULT_QUERY", "iphone")
 PORT = int(os.environ.get("PORT", 10000))  # Render назначает порт
 
-if not TOKEN or not CHAT_ID:
-    raise ValueError("❌ TOKEN и CHAT_ID обязательны.")
+if not TOKEN:
+    raise ValueError("❌ TOKEN обязателен.")
 
 sent_ads = set()
 search_city = DEFAULT_CITY
 search_query = DEFAULT_QUERY
-
-# === Мини HTTP-сервер для Render Web Service ===
-def run_webserver():
-    server_address = ('0.0.0.0', PORT)
-    httpd = HTTPServer(server_address, SimpleHTTPRequestHandler)
-    print(f"[INFO] HTTP-сервер запущен на порту {PORT}")
-    httpd.serve_forever()
-
-threading.Thread(target=run_webserver, daemon=True).start()
 
 # === Парсер Avito ===
 def build_search_url(city: str, query: str) -> str:
@@ -50,6 +37,7 @@ def get_avito_ads() -> list:
         print(f"[Ошибка запроса] {e}")
         return []
 
+    from bs4 import BeautifulSoup
     soup = BeautifulSoup(response.text, "html.parser")
     ads = []
     for item in soup.select("div[data-marker='item']"):
@@ -65,30 +53,7 @@ def get_avito_ads() -> list:
         ads.append({"id": ad_id, "text": f"{title}\n{price}\n{link}"})
     return ads
 
-# === Отправка новых объявлений ===
-async def send_new_ads(app):
-    global sent_ads
-    ads = get_avito_ads()
-    new_ads = [ad for ad in ads if ad["id"] not in sent_ads]
-
-    for ad in new_ads:
-        try:
-            await app.bot.send_message(chat_id=CHAT_ID, text=ad["text"])
-            sent_ads.add(ad["id"])
-        except Exception as e:
-            print(f"[Ошибка отправки] {e}")
-
-    if new_ads:
-        print(f"[INFO] Новых объявлений: {len(new_ads)}")
-    else:
-        print("[INFO] Нет новых объявлений.")
-
-async def scheduled_task(app):
-    while True:
-        await send_new_ads(app)
-        await asyncio.sleep(CHECK_INTERVAL * 60)
-
-# === Команды Telegram ===
+# === Telegram команды ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"🤖 Бот запущен!\nПроверка каждые {CHECK_INTERVAL} мин.\n"
@@ -113,37 +78,51 @@ async def set_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("❗ Пример: /query ноутбук")
 
-# === Safe polling ===
-async def safe_polling(app):
-    while True:
+# === Отправка объявлений через webhook ===
+async def send_new_ads(app):
+    global sent_ads
+    ads = get_avito_ads()
+    new_ads = [ad for ad in ads if ad["id"] not in sent_ads]
+    for ad in new_ads:
         try:
-            print("✅ Запуск бота...")
-            await app.run_polling()
-        except Conflict:
-            print("⚠️ Конфликт. Ждём 30 сек...")
-            await asyncio.sleep(30)
+            await app.bot.send_message(chat_id=app.bot.id, text=ad["text"])
+            sent_ads.add(ad["id"])
         except Exception as e:
-            print(f"❌ Ошибка: {e}. Перезапуск через 15 сек...")
-            await asyncio.sleep(15)
+            print(f"[Ошибка отправки] {e}")
+    if new_ads:
+        print(f"[INFO] Новых объявлений: {len(new_ads)}")
+    else:
+        print("[INFO] Новых объявлений нет.")
 
-# === Main ===
+async def scheduled_task(app):
+    while True:
+        await send_new_ads(app)
+        await asyncio.sleep(CHECK_INTERVAL * 60)
+
+# === Основная функция ===
 async def main():
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("city", set_city))
     app.add_handler(CommandHandler("query", set_query))
+
+    # Запуск фоновой проверки объявлений
     asyncio.create_task(scheduled_task(app))
-    await safe_polling(app)
+
+    # Webhook
+    webhook_url = f"https://{os.environ.get('RENDER_EXTERNAL_URL')}/{TOKEN}"
+    print(f"[INFO] Настраиваем webhook: {webhook_url}")
+    await app.bot.set_webhook(url=webhook_url)
+
+    # Запуск веб-сервера
+    await app.run_webhook(
+        listen="0.0.0.0",
+        port=PORT,
+        url_path=TOKEN,
+        webhook_url=webhook_url
+    )
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except RuntimeError as e:
-        if "close a running event loop" in str(e).lower():
-            loop = asyncio.get_event_loop()
-            loop.create_task(main())
-            loop.run_forever()
-        else:
-            raise
+    asyncio.run(main())
 
 
