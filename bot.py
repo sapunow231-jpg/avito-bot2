@@ -1,5 +1,10 @@
 import os
 from dotenv import load_dotenv
+load_dotenv()
+print(os.getenv("TOKEN"))
+
+import os
+from dotenv import load_dotenv
 import requests
 from bs4 import BeautifulSoup
 from telegram import Bot, Update
