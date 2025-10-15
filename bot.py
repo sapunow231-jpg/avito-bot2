@@ -17,7 +17,7 @@ CHAT_ID = os.getenv("CHAT_ID")
 CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", 2))
 DEFAULT_CITY = os.getenv("DEFAULT_CITY", "samara")
 DEFAULT_QUERY = os.getenv("DEFAULT_QUERY", "iphone")
-PORT = int(os.environ.get("PORT", 10000))
+PORT = int(os.environ.get("PORT", 10000))  # Render назначает порт
 
 if not TOKEN or not CHAT_ID:
     raise ValueError("❌ Переменные TOKEN и CHAT_ID должны быть заданы в .env или Render Environment.")
@@ -40,7 +40,6 @@ threading.Thread(target=run_webserver, daemon=True).start()
 def build_search_url(city: str, query: str) -> str:
     query_encoded = "+".join(query.strip().split())
     return f"https://www.avito.ru/{city}/telefony?p=1&q={query_encoded}"
-
 
 def get_avito_ads() -> list:
     url = build_search_url(search_city, search_query)
@@ -104,7 +103,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"/query <запрос> — сменить поисковый запрос"
     )
 
-
 async def set_city(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global search_city, sent_ads
     if context.args:
@@ -113,7 +111,6 @@ async def set_city(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"🏙 Город изменён на: {search_city}")
     else:
         await update.message.reply_text("❗ Пример: /city kazan")
-
 
 async def set_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global search_query, sent_ads
@@ -157,11 +154,9 @@ if __name__ == "__main__":
         asyncio.run(main())
     except RuntimeError as e:
         if "close a running event loop" in str(e).lower():
-            print("[INFO] Активный event loop найден — используем его.")
             loop = asyncio.get_event_loop()
             loop.create_task(main())
             loop.run_forever()
         else:
             raise
-
 
