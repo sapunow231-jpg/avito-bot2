@@ -1,4 +1,5 @@
 import os
+from dotenv import load_dotenv
 import requests
 from bs4 import BeautifulSoup
 from telegram import Bot, Update
@@ -6,15 +7,16 @@ from telegram.ext import Updater, CommandHandler, CallbackContext
 import schedule
 import time
 
-TOKEN = os.getenv("8385878027:AAEz6A6koSZ3mwvZkvt4xMGvCkIfdvR7FWA")
-CHAT_ID = os.getenv("1285934259")
+load_dotenv()
+
+TOKEN = os.getenv("TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
 CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", 2))
 DEFAULT_CITY = os.getenv("DEFAULT_CITY", "samara")
 DEFAULT_QUERY = os.getenv("DEFAULT_QUERY", "iphone")
 
 bot = Bot(TOKEN)
 sent_ads = set()
-
 search_city = DEFAULT_CITY
 search_query = DEFAULT_QUERY
 
@@ -24,7 +26,7 @@ def build_search_url(city: str, query: str) -> str:
 
 def get_avito_ads() -> list:
     url = build_search_url(search_city, search_query)
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    headers = {"User-Agent": "Mozilla/5.0"}
     try:
         response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
@@ -61,9 +63,9 @@ def send_new_ads():
 
 def start(update: Update, context: CallbackContext):
     update.message.reply_text(
-        f"Бот запущен! Проверка объявлений каждые {CHECK_INTERVAL} минуты(ы).\n"
+        f"Бот запущен! Проверка каждые {CHECK_INTERVAL} минуты(ы).\n"
         "Используйте команды:\n"
-        "/city <город> — изменить город поиска\n"
+        "/city <город> — изменить город\n"
         "/query <запрос> — изменить поисковый запрос"
     )
 
@@ -94,7 +96,7 @@ dp.add_handler(CommandHandler("query", set_query))
 schedule.every(CHECK_INTERVAL).minutes.do(send_new_ads)
 
 updater.start_polling()
-print("Бот запущен и готов к работе!")
+print("Бот запущен!")
 
 while True:
     schedule.run_pending()
