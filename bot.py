@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-# === Загрузка переменных окружения ===
+# === Загружаем переменные окружения ===
 load_dotenv()
 
 TOKEN = os.getenv("TOKEN")
@@ -23,7 +23,7 @@ search_city = DEFAULT_CITY
 search_query = DEFAULT_QUERY
 
 
-# === Вспомогательные функции ===
+# === Парсер Avito ===
 def build_search_url(city: str, query: str) -> str:
     query_encoded = "+".join(query.strip().split())
     return f"https://www.avito.ru/{city}/telefony?p=1&q={query_encoded}"
@@ -41,6 +41,7 @@ def get_avito_ads() -> list:
 
     soup = BeautifulSoup(response.text, "html.parser")
     ads = []
+
     for item in soup.select("div[data-marker='item']"):
         title_tag = item.select_one("h3")
         price_tag = item.select_one("span[data-marker='item-price']")
@@ -56,7 +57,7 @@ def get_avito_ads() -> list:
     return ads
 
 
-# === Отправка объявлений ===
+# === Отправка новых объявлений ===
 async def send_new_ads(app):
     global sent_ads
     ads = get_avito_ads()
@@ -125,21 +126,26 @@ async def main():
     await app.run_polling()
 
 
-# === Безопасный запуск для Render / Python 3.12 / Windows ===
+# === Безопасный запуск (Render, Python 3.12, Jupyter) ===
 if __name__ == "__main__":
     try:
-        # Если цикл уже есть и запущен (Render / Jupyter) — используем его
         loop = asyncio.get_event_loop()
     except RuntimeError:
-        # Если цикла нет, создаём новый
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
-    # Проверяем, запущен ли цикл
-    if loop.is_running():
-        print("[INFO] Используется уже активный event loop.")
-        loop.create_task(main())
-    else:
-        print("[INFO] Запускаем новый event loop.")
-        loop.run_until_complete(main())
-
+    try:
+        if loop.is_running():
+            print("[INFO] Цикл уже запущен — создаём задачу вручную.")
+            loop.create_task(main())
+            loop.run_forever()
+        else:
+            print("[INFO] Запускаем новый event loop.")
+            loop.run_until_complete(main())
+    except RuntimeError as e:
+        if "running event loop" in str(e).lower():
+            print("[INFO] Активный цикл обнаружен — создаём задачу.")
+            loop.create_task(main())
+            loop.run_forever()
+        else:
+            raise
