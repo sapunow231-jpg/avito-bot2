@@ -109,5 +109,11 @@ async def main():
     print("Бот запущен и готов к работе!")
     await app.run_polling()
 
+# Запуск, учитывая уже существующий event loop (Render, Jupyter)
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except RuntimeError:
+        loop = asyncio.get_event_loop()
+        loop.create_task(main())
+        loop.run_forever()
