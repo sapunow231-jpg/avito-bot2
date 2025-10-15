@@ -9,7 +9,7 @@ load_dotenv()  # Загружает .env
 
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
-CHECK_INTERVAL = 5  # Интервал проверки в минутах
+CHECK_INTERVAL = 5  # интервал проверки в минутах
 DEFAULT_CITY = os.getenv("DEFAULT_CITY", "samara")
 DEFAULT_QUERY = os.getenv("DEFAULT_QUERY", "iphone")
 
@@ -20,6 +20,7 @@ sent_ads = set()
 search_city = DEFAULT_CITY
 search_query = DEFAULT_QUERY
 
+# --- RSS парсинг ---
 def build_rss_url(city: str, query: str) -> str:
     query_encoded = "+".join(query.strip().split())
     return f"https://www.avito.ru/{city}/telefony/{query_encoded}/rss"
@@ -39,6 +40,7 @@ def get_avito_ads() -> list:
         ads.append({"id": ad_id, "text": text})
     return ads
 
+# --- Отправка новых объявлений ---
 async def send_new_ads(application):
     global sent_ads
     ads = get_avito_ads()
@@ -80,8 +82,8 @@ async def set_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("Укажите запрос после команды. Пример: /query ноутбук")
 
-# --- Основная часть ---
-async def main():
+# --- Основная функция ---
+def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
     # Регистрируем команды
@@ -93,13 +95,12 @@ async def main():
     async def periodic_check():
         while True:
             await send_new_ads(app)
-            await asyncio.sleep(CHECK_INTERVAL * 60)  # 5 минут
+            await asyncio.sleep(CHECK_INTERVAL * 60)
 
-    # Запуск фоновой задачи
     app.create_task(periodic_check())
 
     print("Бот запущен и готов к работе!")
-    await app.run_polling()
+    app.run_polling()  # безопасно запускает цикл событий
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
