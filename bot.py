@@ -14,7 +14,7 @@ CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", 2))
 DEFAULT_CITY = os.getenv("DEFAULT_CITY", "samara")
 DEFAULT_QUERY = os.getenv("DEFAULT_QUERY", "iphone")
 PORT = int(os.environ.get("PORT", 10000))
-DOMAIN = os.environ.get("RENDER_EXTERNAL_URL")  # Должен быть HTTPS
+DOMAIN = os.environ.get("RENDER_EXTERNAL_URL")  # Live URL от Render
 
 if not TOKEN or not DOMAIN:
     raise ValueError("❌ Обязательно задать TOKEN и RENDER_EXTERNAL_URL")
@@ -22,7 +22,7 @@ if not TOKEN or not DOMAIN:
 sent_ads = set()
 search_city = DEFAULT_CITY
 search_query = DEFAULT_QUERY
-WEBHOOK_PATH = "webhook"  # короткий путь для Telegram
+WEBHOOK_PATH = "webhook"
 
 # === Парсер Avito ===
 def build_search_url(city: str, query: str) -> str:
@@ -54,7 +54,7 @@ def get_avito_ads() -> list:
         ads.append({"id": ad_id, "text": f"{title}\n{price}\n{link}"})
     return ads
 
-# === Команды Telegram ===
+# === Telegram команды ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"🤖 Бот запущен!\nПроверка каждые {CHECK_INTERVAL} мин.\n"
@@ -79,7 +79,7 @@ async def set_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("❗ Пример: /query ноутбук")
 
-# === Отправка объявлений ===
+# === Отправка новых объявлений ===
 async def send_new_ads(app):
     global sent_ads
     ads = get_avito_ads()
