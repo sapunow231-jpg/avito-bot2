@@ -1,6 +1,5 @@
 import os
 import asyncio
-import time
 import requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
@@ -114,40 +113,45 @@ async def set_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❗ Пример: /query ноутбук")
 
 
-# === Безопасный запуск бота с авто-восстановлением ===
-async def run_bot():
+# === Safe polling: защита от Conflict ===
+async def safe_polling(app):
+    while True:
+        try:
+            print("✅ Запуск бота...")
+            await app.run_polling()
+        except Conflict:
+            print("⚠️ Конфликт: бот уже запущен. Ждём 30 сек и пробуем снова...")
+            await asyncio.sleep(30)
+        except Exception as e:
+            print(f"❌ Ошибка: {e}. Перезапуск через 15 сек...")
+            await asyncio.sleep(15)
+
+
+# === Основная функция запуска ===
+async def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("city", set_city))
     app.add_handler(CommandHandler("query", set_query))
 
+    # Запускаем задачу проверки объявлений
     asyncio.create_task(scheduled_task(app))
 
-    while True:
-        try:
-            print("✅ Бот запущен и работает.")
-            await app.initialize()
-            await app.start()
-            await app.updater.start_polling()
-            await asyncio.Event().wait()
-        except Conflict:
-            print("[⚠️] Конфликт: бот уже запущен где-то ещё. Ожидаем 30 сек и пробуем снова...")
-            await asyncio.sleep(30)
-        except Exception as e:
-            print(f"[❌ Ошибка] {e}. Перезапуск через 15 сек...")
-            await asyncio.sleep(15)
+    # Безопасный polling с авто-восстановлением
+    await safe_polling(app)
 
 
-# === Универсальный запуск для Render / Python 3.13 ===
+# === Универсальный запуск ===
 if __name__ == "__main__":
     try:
-        asyncio.run(run_bot())
+        asyncio.run(main())
     except RuntimeError as e:
         if "close a running event loop" in str(e).lower():
-            print("[INFO] Активный event loop найден — используем его повторно.")
+            print("[INFO] Активный event loop найден — используем его.")
             loop = asyncio.get_event_loop()
-            loop.create_task(run_bot())
+            loop.create_task(main())
             loop.run_forever()
         else:
             raise
+
